@@ -1,0 +1,40 @@
+name: Terraform Checks
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - 'FEATURE_*'
+      - 'FIX_*'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  TF_WORKING_DIR: module
+jobs:
+  terraform-checks:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+      - name: Terraform Init
+        run: terraform init -backend=false -input=false
+      - name: Terraform Validate
+        run: terraform validate
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+      - name: Initialize TFLint
+        run: tflint --init
+      - name: Run TFLint
+        run: tflint --recursive

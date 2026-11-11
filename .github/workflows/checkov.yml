@@ -1,0 +1,29 @@
+
+name: Terraform Security Scan
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+      - 'FEATURE_*'
+      - 'FIX_*'
+permissions:
+  contents: read
+  pull-requests: read
+env:
+  TF_WORKING_DIR: module
+jobs:
+  checkov:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Checkov
+        run: pip install checkov
+      - name: Run Checkov
+        run: checkov -d "$TF_WORKING_DIR" --framework terraform --quiet
