@@ -7,14 +7,14 @@ locals {
 
   contract_minor       = tonumber(regex("^v[0-9]+\\.([0-9]+)\\.", local.config_contract)[0])
   hostname_as_document = local.contract_minor >= 12
-  controlplanes = { for k, n in var.nodes : k => n if n.role == "controlplane" }
-  workers       = { for k, n in var.nodes : k => n if n.role == "worker" }
-  cp_keys        = sort(keys(local.controlplanes))
-  cp_ips         = [for k in local.cp_keys : local.controlplanes[k].ip]
-  worker_keys    = sort(keys(local.workers))
-  worker_ips     = [for k in local.worker_keys : local.workers[k].ip]
-  bootstrap_node = var.bootstrap_node != null ? var.bootstrap_node : local.cp_keys[0]
-  bootstrap_ip   = local.controlplanes[local.bootstrap_node].ip
+  controlplanes        = { for k, n in var.nodes : k => n if n.role == "controlplane" }
+  workers              = { for k, n in var.nodes : k => n if n.role == "worker" }
+  cp_keys              = sort(keys(local.controlplanes))
+  cp_ips               = [for k in local.cp_keys : local.controlplanes[k].ip]
+  worker_keys          = sort(keys(local.workers))
+  worker_ips           = [for k in local.worker_keys : local.workers[k].ip]
+  bootstrap_node       = var.bootstrap_node != null ? var.bootstrap_node : local.cp_keys[0]
+  bootstrap_ip         = local.controlplanes[local.bootstrap_node].ip
 
   # disks
   disk_choice = {
@@ -231,13 +231,13 @@ resource "terraform_data" "preflight" {
 # The root of trust of the cluster. TODO: encrypt
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
-  depends_on = [terraform_data.preflight]
+  depends_on    = [terraform_data.preflight]
   lifecycle {
     prevent_destroy = true
   }
 }
 data "talos_machine_configuration" "this" {
-  for_each = toset(["controlplane", "worker"])
+  for_each           = toset(["controlplane", "worker"])
   cluster_name       = var.cluster_name
   cluster_endpoint   = var.cluster_endpoint
   machine_type       = each.key
@@ -246,5 +246,5 @@ data "talos_machine_configuration" "this" {
   kubernetes_version = var.kubernetes_version
   docs               = false
   examples           = false
-  config_patches = each.key == "controlplane" ? local.controlplane_patches : local.worker_patches
+  config_patches     = each.key == "controlplane" ? local.controlplane_patches : local.worker_patches
 }

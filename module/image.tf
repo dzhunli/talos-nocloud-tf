@@ -6,7 +6,7 @@ locals {
 }
 # Ask the factory which of the wanted extensions exist FOR THIS Talos version.
 data "talos_image_factory_extensions_versions" "this" {
-  for_each = local.ext_profiles
+  for_each      = local.ext_profiles
   talos_version = var.talos_version
   filters = {
     names = distinct(concat(local.ext_wanted[each.key], [for e in local.ext_wanted[each.key] : "siderolabs/${e}"]))
@@ -41,12 +41,12 @@ locals {
   }
 }
 resource "talos_image_factory_schematic" "this" {
-  for_each = local.schematics
+  for_each   = local.schematics
   schematic  = yamlencode(each.value)
   depends_on = [terraform_data.preflight]
 }
 data "talos_image_factory_urls" "this" {
-  for_each = local.schematics
+  for_each      = local.schematics
   talos_version = var.talos_version
   schematic_id  = talos_image_factory_schematic.this[each.key].id
   platform      = var.platform
