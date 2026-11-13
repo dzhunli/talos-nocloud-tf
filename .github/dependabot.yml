@@ -1,0 +1,27 @@
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+
+version: 2
+updates:
+  - package-ecosystem: 'terraform' # See documentation for possible values
+    directory: '/module' # Location of package manifests
+    schedule:
+      interval: 'weekly'
+    # Optional: Limit number of open PRs for version updates
+    open-pull-requests-limit: 5
+    # Optional: Add labels to PRs
+    labels:
+      - 'dependencies'
+      - 'terraform'
+    # Optional: Add reviewers
+    reviewers:
+      - 'dzhunli'
+    # Optional: Add assignees
+    assignees:
+      - 'dzhunli'
+    # Optional: Customise commit message prefix
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
