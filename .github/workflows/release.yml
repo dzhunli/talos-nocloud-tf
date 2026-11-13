@@ -1,0 +1,71 @@
+
+name: Release to Terraform Public Registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Terraform module version (e.g. 1.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: terraform-module-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create Tag and Release
+    runs-on: ubuntu-latest
+
+    if: |
+      github.actor == 'dzhunli' &&
+      github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION"
+            echo "Expected format: X.Y.Z (e.g. 1.2.0)"
+            exit 1
+          fi
+
+          TAG="v${VERSION}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists!"
+            exit 1
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push Git tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1.14.0
+        with:
+          tag: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generateReleaseNotes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
