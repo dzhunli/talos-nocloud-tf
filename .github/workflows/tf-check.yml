@@ -1,4 +1,6 @@
+
 name: Terraform Checks
+
 on:
   push:
     branches:
@@ -6,35 +8,180 @@ on:
       - dev
       - 'FEATURE_*'
       - 'FIX_*'
+
+  pull_request:
+    branches:
+      - main
+      - dev
+      - 'FEATURE_*'
+      - 'FIX_*'
+
   workflow_dispatch:
+
 permissions:
   contents: read
+  pull-requests: write
+
 env:
   TF_WORKING_DIR: module
+
 jobs:
   terraform-checks:
     name: Terraform Validation
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        id: checkout
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
+
       - name: Terraform Format
-        run: terraform fmt -check -recursive
+        id: fmt
+        continue-on-error: true
+        run: terraform fmt -check -recursive > fmt-report.txt 2>&1
+
       - name: Terraform Init
-        run: terraform init -backend=false -input=false
+        id: init
+        continue-on-error: true
+        run: terraform init -backend=false -input=false > init-report.txt 2>&1
+
       - name: Terraform Validate
-        run: terraform validate
+        id: validate
+        continue-on-error: true
+        run: terraform validate > validate-report.txt 2>&1
+
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
+
       - name: Initialize TFLint
-        run: tflint --init
+        id: tflint-init
+        continue-on-error: true
+        run: tflint --init > tflint-init-report.txt 2>&1
+
       - name: Run TFLint
-        run: tflint --recursive
+        id: tflint
+        continue-on-error: true
+        run: tflint --recursive > tflint-report.txt 2>&1
+
+      - name: Publish PR Comment
+        if: always() && github.event_name == 'pull_request' && steps.checkout.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          FMT_OUTCOME: ${{ steps.fmt.outcome }}
+          INIT_OUTCOME: ${{ steps.init.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          TFLINT_INIT_OUTCOME: ${{ steps.tflint-init.outcome }}
+          TFLINT_OUTCOME: ${{ steps.tflint.outcome }}
+          TF_WORKING_DIR: ${{ env.TF_WORKING_DIR }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const marker = '<!-- terraform-checks -->';
+
+            const checks = [
+              { name: 'Terraform Format', outcome: process.env.FMT_OUTCOME, file: 'fmt-report.txt' },
+              { name: 'Terraform Init', outcome: process.env.INIT_OUTCOME, file: 'init-report.txt' },
+              { name: 'Terraform Validate', outcome: process.env.VALIDATE_OUTCOME, file: 'validate-report.txt' },
+              { name: 'TFLint Init', outcome: process.env.TFLINT_INIT_OUTCOME, file: 'tflint-init-report.txt' },
+              { name: 'TFLint', outcome: process.env.TFLINT_OUTCOME, file: 'tflint-report.txt' }
+            ];
+
+            const failed = checks.some(check => check.outcome !== 'success');
+
+            const status = failed
+              ? '## Terraform Checks: FAILED'
+              : '## Terraform Checks: PASSED';
+
+            const summary = checks.map(check => {
+              const icon = check.outcome === 'success' ? 'PASS' : 'FAIL';
+              return `| ${check.name} | ${icon} |`;
+            }).join('\n');
+
+            const reports = checks.map(check => {
+              const path = `${process.env.TF_WORKING_DIR}/${check.file}`;
+
+              if (!fs.existsSync(path)) {
+                return `### ${check.name}\n\nReport not generated.`;
+              }
+
+              const report = fs.readFileSync(path, 'utf8').trim();
+
+              return `### ${check.name}\n\n\`\`\`text\n${report.substring(0, 10000) || 'No output.'}\n\`\`\``;
+            }).join('\n\n');
+
+            const body = [
+              marker,
+              status,
+              '',
+              `**Module:** \`${process.env.TF_WORKING_DIR}\``,
+              `**Commit:** \`${context.sha.substring(0, 7)}\``,
+              '',
+              '| Check | Result |',
+              '|---|---|',
+              summary,
+              '',
+              '<details>',
+              '<summary>Detailed reports</summary>',
+              '',
+              reports,
+              '',
+              '</details>',
+              '',
+              '_Generated automatically by GitHub Actions._'
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number,
+                per_page: 100
+              }
+            );
+
+            const existingComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes(marker)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+            }
+
+      - name: Fail if Terraform checks failed
+        if: always()
+        run: |
+          if [[ "${{ steps.fmt.outcome }}" != "success" ||
+                "${{ steps.init.outcome }}" != "success" ||
+                "${{ steps.validate.outcome }}" != "success" ||
+                "${{ steps.tflint-init.outcome }}" != "success" ||
+                "${{ steps.tflint.outcome }}" != "success" ]]; then
+            exit 1
+          fi
